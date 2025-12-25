@@ -2,30 +2,42 @@
 #define SHAPECONTAINER_H
 
 #include <vector>
-#include "shape.h"
+#include "composite.h"
 
 class ShapeContainer
 {
 private:
-    std::vector<Shape*> shapes_;
+    std::vector<CompositeElement*> elements_;
 
 public:
     ShapeContainer();
     ~ShapeContainer();
 
-    void addShape(Shape *shape);
-    void removeShape(int i);
+    void addElement(CompositeElement* element);
+    void removeElement(int i);
     void clear();
 
     void clearSelection();
     void removeSelected();
     void selectAll();
 
-    Shape* getShape(int i) const;
+    CompositeElement* getElement(int i) const;
     int getCount() const;
+
+    // Методы для работы с выделением
+    std::vector<CompositeElement*> getSelectedElements() const;
+    bool hasSelectedElements() const;
+    int getSelectedCount() const;
+
+    // Методы для группировки/разгруппировки
+    void groupSelected();
+    void ungroupSelected();
 
     void moveSelected(int dx, int dy, int maxX, int maxY, int topMargin);
     void setSelectedColor(const QColor &color);
+
+private:
+    void collectAllElements(CompositeElement* element, std::vector<CompositeElement*>& result) const;
 };
 
 #endif // SHAPECONTAINER_H

@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
+#include "composite.h"
+#include "group.h"
 #include "circle.h"
 #include "rectangle.h"
 #include "square.h"
@@ -88,6 +90,16 @@ void MainWindow::createMenu() {
     });
     editMenu->addAction(selectAllAction);
 
+    QAction *groupAction = new QAction("Сгруппировать", this);  // Добавлено
+    groupAction->setShortcut(Qt::CTRL | Qt::Key_G);
+    connect(groupAction, &QAction::triggered, this, &MainWindow::groupSelected);
+    editMenu->addAction(groupAction);
+
+    QAction *ungroupAction = new QAction("Разгруппировать", this);  // Добавлено
+    ungroupAction->setShortcut(Qt::CTRL | Qt::SHIFT | Qt::Key_G);
+    connect(ungroupAction, &QAction::triggered, this, &MainWindow::ungroupSelected);
+    editMenu->addAction(ungroupAction);
+
     QAction *increaseSizeAction = new QAction("Увеличить размер", this);
     increaseSizeAction->setShortcut(Qt::CTRL | Qt::Key_Plus);
     connect(increaseSizeAction, &QAction::triggered, this, &MainWindow::increaseSize);
@@ -142,6 +154,16 @@ void MainWindow::createToolBar() {
         update();
     });
     toolBar->addAction(deleteAction);
+
+    QAction *groupAction = new QAction("Группа", this);  // Добавлено
+    groupAction->setToolTip("Сгруппировать выделенные фигуры (Ctrl+G)");
+    connect(groupAction, &QAction::triggered, this, &MainWindow::groupSelected);
+    toolBar->addAction(groupAction);
+
+    QAction *ungroupAction = new QAction("Разгруппировать", this);  // Добавлено
+    ungroupAction->setToolTip("Разгруппировать выделенные группы (Ctrl+Shift+G)");
+    connect(ungroupAction, &QAction::triggered, this, &MainWindow::ungroupSelected);
+    toolBar->addAction(ungroupAction);
 
     QAction *clearAction = new QAction("Очистить", this);
     clearAction->setToolTip("Очистить все окно");
@@ -218,6 +240,16 @@ void MainWindow::decreaseSize() {
     resizeSelected(-5);
 }
 
+void MainWindow::groupSelected() {
+    shapes_.groupSelected();
+    update();
+}
+
+void MainWindow::ungroupSelected() {
+    shapes_.ungroupSelected();
+    update();
+}
+
 void MainWindow::updateWindowTitle() {
     QString shapeName;
     switch (currentShapeType_) {
@@ -238,9 +270,9 @@ void MainWindow::paintEvent(QPaintEvent *event) {
     painter.fillRect(rect(), Qt::white);
 
     for (int i = 0; i < shapes_.getCount(); i++) {
-        Shape* shape = shapes_.getShape(i);
-        if (shape) {
-            shape->draw(painter);
+        CompositeElement* element = shapes_.getElement(i);
+        if (element) {
+            element->draw(painter);
         }
     }
 }
@@ -258,29 +290,32 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
         bool ctrlPressed = event->modifiers() & Qt::ControlModifier;
 
         if (ctrlPressed) {
+            // Нажатие с Ctrl: выделяем все объекты под курсором
             bool foundAny = false;
             for (int i = shapes_.getCount() - 1; i >= 0; i--) {
-                Shape* shape = shapes_.getShape(i);
-                if (shape && shape->contains(x, y)) {
-                    shape->setSelected(!shape->getSelected());
+                CompositeElement* element = shapes_.getElement(i);
+                if (element && element->contains(x, y)) {
+                    element->setSelected(!element->getSelected());
                     foundAny = true;
                 }
             }
 
             if (!foundAny) {
-                Shape* newShape = nullptr;
+                // Если ничего не нашли под курсором - создаем новый объект
+                CompositeElement* newElement = nullptr;
                 int margin = 0;
 
+                // Создаем Shape и оборачиваем его в ShapeAdapter
                 switch (currentShapeType_) {
                 case CIRCLE: {
                     int radius = 40;
                     if (x - radius >= margin && x + radius <= width() - margin &&
                         y - radius >= usableTop && y + radius <= height() - margin) {
-                        newShape = new Circle(x, y, radius);
+                        newElement = new ShapeAdapter(new Circle(x, y, radius));
                     } else {
                         int safeX = std::max(margin + radius, std::min(x, width() - margin - radius));
                         int safeY = std::max(usableTop + radius, std::min(y, height() - margin - radius));
-                        newShape = new Circle(safeX, safeY, radius);
+                        newElement = new ShapeAdapter(new Circle(safeX, safeY, radius));
                     }
                     break;
                 }
@@ -289,11 +324,11 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
                     int rectHeight = 50;
                     if (x >= margin && x <= width() - margin - rectWidth &&
                         y >= usableTop && y <= height() - margin - rectHeight) {
-                        newShape = new Rectangle(x, y, rectWidth, rectHeight);
+                        newElement = new ShapeAdapter(new Rectangle(x, y, rectWidth, rectHeight));
                     } else {
                         int safeX = std::max(margin, std::min(x, width() - margin - rectWidth));
                         int safeY = std::max(usableTop, std::min(y, height() - margin - rectHeight));
-                        newShape = new Rectangle(safeX, safeY, rectWidth, rectHeight);
+                        newElement = new ShapeAdapter(new Rectangle(safeX, safeY, rectWidth, rectHeight));
                     }
                     break;
                 }
@@ -301,11 +336,11 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
                     int size = 70;
                     if (x >= margin && x <= width() - margin - size &&
                         y >= usableTop && y <= height() - margin - size) {
-                        newShape = new Square(x, y, size);
+                        newElement = new ShapeAdapter(new Square(x, y, size));
                     } else {
                         int safeX = std::max(margin, std::min(x, width() - margin - size));
                         int safeY = std::max(usableTop, std::min(y, height() - margin - size));
-                        newShape = new Square(safeX, safeY, size);
+                        newElement = new ShapeAdapter(new Square(safeX, safeY, size));
                     }
                     break;
                 }
@@ -313,11 +348,11 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
                     int size = 70;
                     if (x >= margin && x <= width() - margin - size &&
                         y >= usableTop + size/2 && y <= height() - margin - size/2) {
-                        newShape = new Triangle(x, y, size);
+                        newElement = new ShapeAdapter(new Triangle(x, y, size));
                     } else {
                         int safeX = std::max(margin, std::min(x, width() - margin - size));
                         int safeY = std::max(usableTop + size/2, std::min(y, height() - margin - size/2));
-                        newShape = new Triangle(safeX, safeY, size);
+                        newElement = new ShapeAdapter(new Triangle(safeX, safeY, size));
                     }
                     break;
                 }
@@ -325,49 +360,54 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
                     int length = 70;
                     if (x >= margin && x <= width() - margin - length &&
                         y >= usableTop && y <= height() - margin) {
-                        newShape = new Line(x, y, x + length, y);
+                        newElement = new ShapeAdapter(new Line(x, y, x + length, y));
                     } else {
                         int safeX = std::max(margin, std::min(x, width() - margin - length));
                         int safeY = std::max(usableTop, std::min(y, height() - margin));
-                        newShape = new Line(safeX, safeY, safeX + length, safeY);
+                        newElement = new ShapeAdapter(new Line(safeX, safeY, safeX + length, safeY));
                     }
                     break;
                 }
                 }
 
-                if (newShape) {
-                    newShape->setSelected(false);
-                    shapes_.addShape(newShape);
+                if (newElement) {
+                    newElement->setSelected(false);
+                    shapes_.addElement(newElement);
                 }
             }
         } else {
-            Shape* clickedShape = nullptr;
+            // Обычное нажатие: выделяем только верхний объект
+            CompositeElement* clickedElement = nullptr;
 
             for (int i = shapes_.getCount() - 1; i >= 0; i--) {
-                Shape* shape = shapes_.getShape(i);
-                if (shape && shape->contains(x, y)) {
-                    clickedShape = shape;
-                    break;
+                CompositeElement* element = shapes_.getElement(i);
+                if (element && element->contains(x, y)) {
+                    clickedElement = element;
+                    break; // Нашли самый верхний - выходим
                 }
             }
 
-            if (clickedShape) {
+            if (clickedElement) {
+                // Снимаем выделение со всех
                 shapes_.clearSelection();
-                clickedShape->setSelected(true);
+                // Выделяем только верхний
+                clickedElement->setSelected(true);
             } else {
-                Shape* newShape = nullptr;
+                // Ничего не нажали - создаем новый объект
+                CompositeElement* newElement = nullptr;
                 int margin = 0;
 
+                // Создаем Shape и оборачиваем его в ShapeAdapter
                 switch (currentShapeType_) {
                 case CIRCLE: {
                     int radius = 40;
                     if (x - radius >= margin && x + radius <= width() - margin &&
                         y - radius >= usableTop && y + radius <= height() - margin) {
-                        newShape = new Circle(x, y, radius);
+                        newElement = new ShapeAdapter(new Circle(x, y, radius));
                     } else {
                         int safeX = std::max(margin + radius, std::min(x, width() - margin - radius));
                         int safeY = std::max(usableTop + radius, std::min(y, height() - margin - radius));
-                        newShape = new Circle(safeX, safeY, radius);
+                        newElement = new ShapeAdapter(new Circle(safeX, safeY, radius));
                     }
                     break;
                 }
@@ -376,11 +416,11 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
                     int rectHeight = 60;
                     if (x >= margin && x <= width() - margin - rectWidth &&
                         y >= usableTop && y <= height() - margin - rectHeight) {
-                        newShape = new Rectangle(x, y, rectWidth, rectHeight);
+                        newElement = new ShapeAdapter(new Rectangle(x, y, rectWidth, rectHeight));
                     } else {
                         int safeX = std::max(margin, std::min(x, width() - margin - rectWidth));
                         int safeY = std::max(usableTop, std::min(y, height() - margin - rectHeight));
-                        newShape = new Rectangle(safeX, safeY, rectWidth, rectHeight);
+                        newElement = new ShapeAdapter(new Rectangle(safeX, safeY, rectWidth, rectHeight));
                     }
                     break;
                 }
@@ -388,11 +428,11 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
                     int size = 70;
                     if (x >= margin && x <= width() - margin - size &&
                         y >= usableTop && y <= height() - margin - size) {
-                        newShape = new Square(x, y, size);
+                        newElement = new ShapeAdapter(new Square(x, y, size));
                     } else {
                         int safeX = std::max(margin, std::min(x, width() - margin - size));
                         int safeY = std::max(usableTop, std::min(y, height() - margin - size));
-                        newShape = new Square(safeX, safeY, size);
+                        newElement = new ShapeAdapter(new Square(safeX, safeY, size));
                     }
                     break;
                 }
@@ -400,11 +440,11 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
                     int size = 70;
                     if (x >= margin && x <= width() - margin - size &&
                         y >= usableTop + size/2 && y <= height() - margin - size/2) {
-                        newShape = new Triangle(x, y, size);
+                        newElement = new ShapeAdapter(new Triangle(x, y, size));
                     } else {
                         int safeX = std::max(margin, std::min(x, width() - margin - size));
                         int safeY = std::max(usableTop + size/2, std::min(y, height() - margin - size/2));
-                        newShape = new Triangle(safeX, safeY, size);
+                        newElement = new ShapeAdapter(new Triangle(safeX, safeY, size));
                     }
                     break;
                 }
@@ -412,19 +452,19 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
                     int length = 70;
                     if (x >= margin && x <= width() - margin - length &&
                         y >= usableTop && y <= height() - margin) {
-                        newShape = new Line(x, y, x + length, y);
+                        newElement = new ShapeAdapter(new Line(x, y, x + length, y));
                     } else {
                         int safeX = std::max(margin, std::min(x, width() - margin - length));
                         int safeY = std::max(usableTop, std::min(y, height() - margin));
-                        newShape = new Line(safeX, safeY, safeX + length, safeY);
+                        newElement = new ShapeAdapter(new Line(safeX, safeY, safeX + length, safeY));
                     }
                     break;
                 }
                 }
 
-                if (newShape) {
-                    newShape->setSelected(false);
-                    shapes_.addShape(newShape);
+                if (newElement) {
+                    newElement->setSelected(false);
+                    shapes_.addElement(newElement);
                 }
             }
         }
@@ -504,6 +544,17 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
         }
         break;
 
+    case Qt::Key_G:
+        if (event->modifiers() & Qt::ControlModifier) {
+            if (event->modifiers() & Qt::ShiftModifier) {
+                shapes_.ungroupSelected();
+            } else {
+                shapes_.groupSelected();
+            }
+            needUpdate = true;
+        }
+        break;
+
     case Qt::Key_Plus:
     case Qt::Key_Equal:
         if (event->modifiers() & Qt::ControlModifier) {
@@ -542,15 +593,27 @@ void MainWindow::resizeSelected(int delta) {
     int usableTop = toolBarHeight;
 
     for (int i = 0; i < shapes_.getCount(); i++) {
-        Shape* shape = shapes_.getShape(i);
-        if (shape && shape->getSelected()) {
-            applyResizeWithBounds(shape, delta, width(), height(), usableTop);
+        CompositeElement* element = shapes_.getElement(i);
+        if (element && element->getSelected()) {
+            // Для групп не применяем изменение размера через эту функцию
+            // Группы изменяют размер через изменение размера своих детей
+            if (!element->isGroup()) {
+                applyResizeWithBounds(element, delta, width(), height(), usableTop);
+            }
         }
     }
     update();
 }
 
-void MainWindow::applyResize(Shape* shape, int delta) {
+void MainWindow::applyResize(CompositeElement* element, int delta) {
+    // Получаем Shape из адаптера
+    ShapeAdapter* adapter = dynamic_cast<ShapeAdapter*>(element);
+    if (!adapter) return;
+
+    Shape* shape = adapter->getShape();
+    if (!shape) return;
+
+    // Применяем изменение размера к фигуре
     if (Circle* circle = dynamic_cast<Circle*>(shape)) {
         int newRadius = circle->getRadius() + delta;
         if (newRadius >= 5 && newRadius <= 100) {
@@ -611,93 +674,26 @@ void MainWindow::applyResize(Shape* shape, int delta) {
     }
 }
 
-void MainWindow::applyResizeWithBounds(Shape* shape, int delta, int maxX, int maxY, int topMargin) {
+void MainWindow::applyResizeWithBounds(CompositeElement* element, int delta, int maxX, int maxY, int topMargin) {
     if (delta > 0) {
-        if (!canResizeWithBounds(shape, delta, maxX, maxY, topMargin)) {
+        if (!canResizeWithBounds(element, delta, maxX, maxY, topMargin)) {
             return;
         }
     }
 
-    if (Circle* circle = dynamic_cast<Circle*>(shape)) {
-        int newRadius = circle->getRadius() + delta;
-        if (newRadius >= 5) {
-            circle->setRadius(newRadius);
-        }
-    }
-    else if (Rectangle* rect = dynamic_cast<Rectangle*>(shape)) {
-        int newWidth = rect->getWidth() + delta;
-        int newHeight = rect->getHeight() + delta;
-        if (newWidth >= 10 && newHeight >= 10) {
-            rect->setSize(newWidth, newHeight);
-        }
-    }
-    else if (Square* square = dynamic_cast<Square*>(shape)) {
-        int newSize = square->getSide() + delta;
-        if (newSize >= 10) {
-            square->setSide(newSize);
-        }
-    }
-    else if (Triangle* triangle = dynamic_cast<Triangle*>(shape)) {
-        int oldSize = triangle->getSize();
-        int newSize = oldSize + delta;
-
-        if (newSize >= 10) {
-            QRect newBounds = QRect(
-                triangle->getX(),
-                triangle->getY() - newSize/2,
-                newSize,
-                newSize
-                );
-
-            if (newBounds.top() >= topMargin) {
-                triangle->setSize(newSize);
-            }
-        }
-    }
-    else if (Line* line = dynamic_cast<Line*>(shape)) {
-        int x1 = line->getX();
-        int y1 = line->getY();
-        int x2 = line->getX2();
-        int y2 = line->getY2();
-
-        int dx = x2 - x1;
-        int dy = y2 - y1;
-        double currentLength = sqrt(dx*dx + dy*dy);
-
-        if (currentLength > 0) {
-            double newLength = currentLength + delta;
-
-            if (newLength >= 10) {
-                if (delta < 0 && currentLength + delta < 10) {
-                    newLength = 10;
-                }
-
-                int centerX = (x1 + x2) / 2;
-                int centerY = (y1 + y2) / 2;
-                double scale = newLength / currentLength;
-
-                int newX1 = centerX + (int)((x1 - centerX) * scale);
-                int newY1 = centerY + (int)((y1 - centerY) * scale);
-                int newX2 = centerX + (int)((x2 - centerX) * scale);
-                int newY2 = centerY + (int)((y2 - centerY) * scale);
-
-                int left = std::min(newX1, newX2);
-                int right = std::max(newX1, newX2);
-                int top = std::min(newY1, newY2);
-                int bottom = std::max(newY1, newY2);
-
-                if (left >= 0 && right <= maxX && top >= topMargin && bottom <= maxY) {
-                    line->setPosition(newX1, newY1);
-                    line->setEndPoint(newX2, newY2);
-                }
-            }
-        }
-    }
+    applyResize(element, delta);
 }
 
-bool MainWindow::canResizeWithBounds(Shape* shape, int delta, int maxX, int maxY, int topMargin) {
+bool MainWindow::canResizeWithBounds(CompositeElement* element, int delta, int maxX, int maxY, int topMargin) {
     if (delta <= 0) return true;
 
+    ShapeAdapter* adapter = dynamic_cast<ShapeAdapter*>(element);
+    if (!adapter) return true;
+
+    Shape* shape = adapter->getShape();
+    if (!shape) return true;
+
+    // Предварительная проверка границ для увеличения размера
     if (Circle* circle = dynamic_cast<Circle*>(shape)) {
         int newRadius = circle->getRadius() + delta;
 

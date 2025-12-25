@@ -41,6 +41,8 @@ private slots:
     void clearWindow();
     void increaseSize();
     void decreaseSize();
+    void groupSelected();        // Добавлено
+    void ungroupSelected();      // Добавлено
 
 private:
     Ui::MainWindow *ui;
@@ -52,9 +54,9 @@ private:
     void updateWindowTitle();
     void resizeSelected(int delta);
     bool canResizeSelected(int delta) const;
-    void applyResize(Shape* shape, int delta);
-    void applyResizeWithBounds(Shape* shape, int delta, int maxX, int maxY, int topMargin);
-    bool canResizeWithBounds(Shape* shape, int delta, int maxX, int maxY, int topMargin);
+    void applyResize(CompositeElement* element, int delta);  // Изменено с Shape* на CompositeElement*
+    void applyResizeWithBounds(CompositeElement* element, int delta, int maxX, int maxY, int topMargin);  // Изменено
+    bool canResizeWithBounds(CompositeElement* element, int delta, int maxX, int maxY, int topMargin);    // Изменено
 };
 
 #endif // MAINWINDOW_H
