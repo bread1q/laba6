@@ -5,6 +5,7 @@
 #include "triangle.h"
 #include "line.h"
 #include <sstream>
+#include <iostream>
 
 std::string ShapeAdapter::getTypeName() const
 {
@@ -31,7 +32,7 @@ std::string ShapeAdapter::save() const
         << shape_->getColor().green() << " "
         << shape_->getColor().blue() << " "
         << shape_->getColor().alpha() << " "
-        << shape_->getSelected() << " ";
+        << (shape_->getSelected() ? "1" : "0") << " ";
 
     // Сохраняем специфичные для фигуры данные
     if (Circle* circle = dynamic_cast<Circle*>(shape_)) {

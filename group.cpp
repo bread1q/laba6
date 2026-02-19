@@ -200,17 +200,22 @@ std::string Group::save() const
 {
     std::ostringstream oss;
 
-    // Сохраняем основные свойства группы
-    oss << getTypeName() << " "
-        << children_.size() << " "
-        << selected_ << " "
+    // Сохраняем тип группы
+    oss << getTypeName() << " ";
+
+    // Сохраняем основные свойства
+    oss << (selected_ ? "1" : "0") << " "
         << color_.red() << " "
         << color_.green() << " "
         << color_.blue() << " "
-        << color_.alpha() << " ";
+        << color_.alpha() << " "
+        << children_.size() << " ";  // Количество детей в конце
 
     // Сохраняем детей
-    saveChildren(oss);
+    for (auto child : children_) {
+        std::string childData = child->save();
+        oss << "{" << childData << "} ";  // Оборачиваем каждого ребенка в фигурные скобки
+    }
 
     return oss.str();
 }

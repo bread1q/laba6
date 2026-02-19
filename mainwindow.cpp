@@ -846,21 +846,21 @@ void MainWindow::saveToFile()
         this,
         "Сохранить проект",
         "",
-        "Файлы проекта (*.shapes);;Все файлы (*.*)"
+        "Текстовые файлы (*.txt);;Все файлы (*.*)"
         );
 
     if (fileName.isEmpty()) {
         return; // Пользователь отменил сохранение
     }
 
-    // Добавляем расширение, если его нет
-    if (!fileName.endsWith(".shapes", Qt::CaseInsensitive)) {
-        fileName += ".shapes";
+    // Добавляем расширение .txt, если его нет
+    if (!fileName.endsWith(".txt", Qt::CaseInsensitive)) {
+        fileName += ".txt";
     }
 
     // Сохраняем в файл
     if (shapes_.saveToFile(fileName.toStdString())) {
-        QMessageBox::information(this, "Сохранение", "Проект успешно сохранен!");
+        QMessageBox::information(this, "Сохранение", "Проект успешно сохранен в файл " + fileName);
     } else {
         QMessageBox::critical(this, "Ошибка", "Не удалось сохранить проект!");
     }
@@ -887,7 +887,7 @@ void MainWindow::loadFromFile()
         this,
         "Загрузить проект",
         "",
-        "Файлы проекта (*.shapes);;Все файлы (*.*)"
+        "Текстовые файлы (*.txt);;Все файлы (*.*)"
         );
 
     if (fileName.isEmpty()) {
@@ -896,10 +896,10 @@ void MainWindow::loadFromFile()
 
     // Загружаем из файла
     if (shapes_.loadFromFile(fileName.toStdString())) {
-        QMessageBox::information(this, "Загрузка", "Проект успешно загружен!");
+        QMessageBox::information(this, "Загрузка", "Проект успешно загружен из файла " + fileName);
         update(); // Обновляем отображение
     } else {
-        QMessageBox::critical(this, "Ошибка", "Не удалось загрузить проект!");
+        QMessageBox::critical(this, "Ошибка", "Не удалось загрузить проект из файла " + fileName);
     }
 }
 

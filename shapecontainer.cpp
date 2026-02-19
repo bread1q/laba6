@@ -5,6 +5,7 @@
 #include <QPainter>
 #include <fstream>
 #include <sstream>
+#include <iostream>
 
 ShapeContainer::ShapeContainer() {}
 
@@ -228,9 +229,20 @@ bool ShapeContainer::saveToFile(const std::string& filename) const
         return false;
     }
 
-    file << saveToString();
-    file.close();
+    // Сохраняем количество элементов
+    file << elements_.size() << "\n";
 
+    // Сохраняем каждый элемент
+    for (auto element : elements_) {
+        std::string elementData = element->save();
+        // Убираем лишние пробелы в конце строки, если есть
+        while (!elementData.empty() && elementData.back() == ' ') {
+            elementData.pop_back();
+        }
+        file << elementData << "\n";
+    }
+
+    file.close();
     return true;
 }
 
@@ -274,14 +286,49 @@ bool ShapeContainer::loadFromFile(const std::string& filename)
 {
     std::ifstream file(filename);
     if (!file.is_open()) {
+        std::cerr << "Cannot open file: " << filename << std::endl;
         return false;
     }
 
-    // Читаем весь файл
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    file.close();
+    clear();  // Очищаем текущие элементы
 
-    loadFromString(buffer.str());
+    std::string line;
+    int lineNumber = 0;
+
+    // Читаем первую строку - количество элементов
+    if (!std::getline(file, line)) {
+        std::cerr << "Empty file" << std::endl;
+        return false;
+    }
+
+    int elementCount = std::stoi(line);
+    std::cout << "Loading " << elementCount << " elements" << std::endl;
+
+    // Загружаем каждый элемент
+    for (int i = 0; i < elementCount; ++i) {
+        if (!std::getline(file, line)) {
+            std::cerr << "Unexpected end of file at element " << i << std::endl;
+            break;
+        }
+
+        // Пропускаем пустые строки
+        if (line.empty()) {
+            i--; // Не считаем пустую строку за элемент
+            continue;
+        }
+
+        std::cout << "Loading element " << i << ": " << line << std::endl;
+
+        CompositeElement* element = ShapeFactory::createFromString(line);
+        if (element) {
+            elements_.push_back(element);
+            std::cout << "Successfully created element of type " << element->getTypeName() << std::endl;
+        } else {
+            std::cerr << "Failed to create element from line: " << line << std::endl;
+        }
+    }
+
+    file.close();
+    std::cout << "Loaded " << elements_.size() << " elements" << std::endl;
     return true;
 }
