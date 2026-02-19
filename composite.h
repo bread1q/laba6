@@ -2,11 +2,12 @@
 #define COMPOSITE_H
 
 #include "shape.h"
+#include "serializable.h"
 #include <vector>
 #include <memory>
 
 // Базовый класс для элементов композиции
-class CompositeElement
+class CompositeElement : public Serializable
 {
 public:
     virtual ~CompositeElement() = default;
@@ -42,6 +43,20 @@ public:
 
     // Методы для сохранения/загрузки (будем добавлять позже)
     virtual std::string getTypeName() const = 0;
+
+    // В класс CompositeElement добавляем:
+    virtual void scale(double factor) { Q_UNUSED(factor); }
+    virtual bool canScale(double factor, int left, int top, int right, int bottom) const {
+        Q_UNUSED(factor); Q_UNUSED(left); Q_UNUSED(top); Q_UNUSED(right); Q_UNUSED(bottom);
+        return false;
+    }
+    virtual bool safeScale(double factor, int left, int top, int right, int bottom) {
+        Q_UNUSED(factor); Q_UNUSED(left); Q_UNUSED(top); Q_UNUSED(right); Q_UNUSED(bottom);
+        return false;
+    }
+
+    virtual void saveChildren(std::ostream& os) const;
+    virtual void loadChildren(std::istream& is);
 };
 
 // Класс-адаптер для существующих Shape
@@ -91,6 +106,25 @@ public:
     Shape* getShape() const { return shape_; }
 
     std::string getTypeName() const override;
+
+    // В класс ShapeAdapter добавляем:
+    void scale(double factor) override {
+        // ShapeAdapter не поддерживает масштабирование напрямую
+        // Масштабирование будет обрабатываться через applyResize в MainWindow
+    }
+
+    bool canScale(double factor, int left, int top, int right, int bottom) const override {
+        Q_UNUSED(factor); Q_UNUSED(left); Q_UNUSED(top); Q_UNUSED(right); Q_UNUSED(bottom);
+        return false; // ShapeAdapter не поддерживает масштабирование
+    }
+
+    bool safeScale(double factor, int left, int top, int right, int bottom) override {
+        Q_UNUSED(factor); Q_UNUSED(left); Q_UNUSED(top); Q_UNUSED(right); Q_UNUSED(bottom);
+        return false; // ShapeAdapter не поддерживает масштабирование
+    }
+
+    std::string save() const override;
+    void load(const std::string& data) override;
 };
 
 #endif // COMPOSITE_H

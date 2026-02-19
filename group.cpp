@@ -1,8 +1,10 @@
 #include "group.h"
+#include "shapefactory.h"
 #include <QPainter>
 #include <algorithm>
+#include <sstream>
 
-Group::Group() : selected_(false), color_(Qt::gray), boundsValid_(false) {}
+Group::Group() : selected_(false), color_(Qt::gray) {}
 
 Group::~Group()
 {
@@ -49,24 +51,16 @@ bool Group::contains(int x, int y) const
 
 QRect Group::getBorderRect() const
 {
-    if (!boundsValid_) {
-        calculateBounds();
-    }
-    return cachedBounds_;
-}
-
-void Group::calculateBounds() const
-{
+    // ВСЕГДА вычисляем границы заново
     if (children_.empty()) {
-        cachedBounds_ = QRect(0, 0, 0, 0);
-    } else {
-        QRect bounds = children_[0]->getBorderRect();
-        for (size_t i = 1; i < children_.size(); ++i) {
-            bounds = bounds.united(children_[i]->getBorderRect());
-        }
-        cachedBounds_ = bounds;
+        return QRect(0, 0, 0, 0);
     }
-    boundsValid_ = true;
+
+    QRect bounds = children_[0]->getBorderRect();
+    for (size_t i = 1; i < children_.size(); ++i) {
+        bounds = bounds.united(children_[i]->getBorderRect());
+    }
+    return bounds;
 }
 
 QRect Group::getSafeBorderRect(int margin) const
@@ -81,36 +75,41 @@ void Group::move(int dx, int dy)
     for (auto child : children_) {
         child->move(dx, dy);
     }
-    boundsValid_ = false;
 }
 
 bool Group::checkBounds(int left, int top, int right, int bottom) const
 {
-    QRect bounds = getBorderRect();
-    return (bounds.left() >= left &&
-            bounds.right() <= right &&
-            bounds.top() >= top &&
-            bounds.bottom() <= bottom);
+    // Проверяем, что ВСЕ дети находятся в пределах границ
+    for (auto child : children_) {
+        if (!child->checkBounds(left, top, right, bottom)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool Group::safeMove(int dx, int dy, int left, int top, int right, int bottom)
 {
     // Сохраняем старые позиции всех детей
     std::vector<std::pair<int, int>> oldPositions;
+
     for (auto child : children_) {
         oldPositions.emplace_back(child->getX(), child->getY());
     }
 
-    // Пытаемся переместить
-    move(dx, dy);
+    // Пытаемся переместить всех детей
+    for (auto child : children_) {
+        child->move(dx, dy);
+    }
 
-    // Проверяем границы
-    if (!checkBounds(left, top, right, bottom)) {
-        // Возвращаем на старые позиции
+    // Проверяем границы для ВСЕХ детей
+    bool allInBounds = checkBounds(left, top, right, bottom);
+
+    if (!allInBounds) {
+        // Возвращаем всех детей на старые позиции
         for (size_t i = 0; i < children_.size(); ++i) {
             children_[i]->setPosition(oldPositions[i].first, oldPositions[i].second);
         }
-        boundsValid_ = false;
         return false;
     }
 
@@ -119,7 +118,8 @@ bool Group::safeMove(int dx, int dy, int left, int top, int right, int bottom)
 
 bool Group::canChangeSize(int left, int top, int right, int bottom, int margin) const
 {
-    return checkBounds(left, top, right, bottom);
+    // Группы не могут менять размер напрямую
+    return false;
 }
 
 bool Group::getSelected() const
@@ -179,12 +179,6 @@ void Group::addChild(CompositeElement* child)
 {
     if (child) {
         children_.push_back(child);
-        // Сохраняем относительное смещение
-        QRect bounds = getBorderRect();
-        QRect childBounds = child->getBorderRect();
-        childOffsets_.emplace_back(childBounds.center().x() - bounds.center().x(),
-                                   childBounds.center().y() - bounds.center().y());
-        boundsValid_ = false;
     }
 }
 
@@ -192,10 +186,7 @@ void Group::removeChild(CompositeElement* child)
 {
     auto it = std::find(children_.begin(), children_.end(), child);
     if (it != children_.end()) {
-        size_t index = it - children_.begin();
         children_.erase(it);
-        childOffsets_.erase(childOffsets_.begin() + index);
-        boundsValid_ = false;
     }
 }
 
@@ -204,13 +195,81 @@ const std::vector<CompositeElement*>& Group::getChildren() const
     return children_;
 }
 
-void Group::updateChildOffsets()
+// Методы сохранения/загрузки для Group
+std::string Group::save() const
 {
-    childOffsets_.clear();
-    QRect bounds = getBorderRect();
+    std::ostringstream oss;
+
+    // Сохраняем основные свойства группы
+    oss << getTypeName() << " "
+        << children_.size() << " "
+        << selected_ << " "
+        << color_.red() << " "
+        << color_.green() << " "
+        << color_.blue() << " "
+        << color_.alpha() << " ";
+
+    // Сохраняем детей
+    saveChildren(oss);
+
+    return oss.str();
+}
+
+void Group::load(const std::string& data)
+{
+    std::istringstream iss(data);
+    std::string type;
+    int childCount;
+
+    iss >> type >> childCount >> selected_;
+
+    int r, g, b, a;
+    iss >> r >> g >> b >> a;
+    color_ = QColor(r, g, b, a);
+
+    // Очищаем текущих детей
+    clearChildren();
+
+    // Загружаем детей
+    loadChildren(iss);
+}
+
+void Group::saveChildren(std::ostream& os) const
+{
     for (auto child : children_) {
-        QRect childBounds = child->getBorderRect();
-        childOffsets_.emplace_back(childBounds.center().x() - bounds.center().x(),
-                                   childBounds.center().y() - bounds.center().y());
+        // Сохраняем каждый child
+        std::string childData = child->save();
+        os << childData.length() << " ";  // Длина данных ребенка
+        os << childData << " ";           // Данные ребенка
     }
 }
+
+void Group::loadChildren(std::istream& is)
+{
+    // Теперь используем фабрику для создания детей
+    for (size_t i = 0; i < children_.size(); ++i) {
+        int dataLength;
+        is >> dataLength;
+
+        // Читаем данные ребенка
+        std::string childData(dataLength, ' ');
+        is.read(&childData[0], dataLength);
+
+        // Создаем ребенка с помощью фабрики
+        CompositeElement* child = ShapeFactory::createFromString(childData);
+        if (child) {
+            // Заменяем существующего ребенка
+            delete children_[i];
+            children_[i] = child;
+        }
+    }
+}
+
+void Group::clearChildren()
+{
+    for (auto child : children_) {
+        delete child;
+    }
+    children_.clear();
+}
+

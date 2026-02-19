@@ -36,8 +36,15 @@ public:
     void moveSelected(int dx, int dy, int maxX, int maxY, int topMargin);
     void setSelectedColor(const QColor &color);
 
+    std::string saveToString() const;
+    bool saveToFile(const std::string& filename) const;
+
+    void loadFromString(const std::string& data);
+    bool loadFromFile(const std::string& filename);
+
 private:
     void collectAllElements(CompositeElement* element, std::vector<CompositeElement*>& result) const;
+    void collectNonGroupElements(CompositeElement* element, std::vector<CompositeElement*>& result) const;
 };
 
 #endif // SHAPECONTAINER_H

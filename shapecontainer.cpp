@@ -1,7 +1,10 @@
 #include "shapecontainer.h"
+#include "shapefactory.h"
 #include "group.h"
 #include "line.h"
 #include <QPainter>
+#include <fstream>
+#include <sstream>
 
 ShapeContainer::ShapeContainer() {}
 
@@ -150,53 +153,16 @@ void ShapeContainer::ungroupSelected() {
     }
 }
 
-void ShapeContainer::collectAllElements(CompositeElement* element, std::vector<CompositeElement*>& result) const {
-    result.push_back(element);
-    if (element->isGroup()) {
-        const std::vector<CompositeElement*>& children = element->getChildren();
-        for (auto child : children) {
-            collectAllElements(child, result);
-        }
-    }
-}
-
 void ShapeContainer::moveSelected(int dx, int dy, int maxX, int maxY, int topMargin) {
     int left = 0;
     int top = topMargin;
     int right = maxX;
     int bottom = maxY;
 
-    // Собираем все выбранные элементы (включая вложенные в группы)
-    std::vector<CompositeElement*> allSelected;
+    // Для каждого выбранного элемента пытаемся переместить его
     for (auto element : elements_) {
         if (element->getSelected()) {
-            collectAllElements(element, allSelected);
-        }
-    }
-
-    // Перемещаем каждый выбранный элемент
-    for (auto element : allSelected) {
-        // Пропускаем группы, так как они будут перемещены через своих родителей
-        if (!element->isGroup()) {
-            int oldX = element->getX();
-            int oldY = element->getY();
-
-            // Перемещаем
-            element->move(dx, dy);
-
-            // Проверяем границы
-            QRect newBounds = element->getBorderRect();
-            if (newBounds.left() < left || newBounds.right() > right ||
-                newBounds.top() < top || newBounds.bottom() > bottom) {
-                // Возвращаем на старую позицию
-                element->setPosition(oldX, oldY);
-            }
-        }
-    }
-
-    // Также перемещаем группы (они перемещают своих детей)
-    for (auto element : elements_) {
-        if (element->getSelected() && element->isGroup()) {
+            // Используем safeMove для проверки границ
             element->safeMove(dx, dy, left, top, right, bottom);
         }
     }
@@ -215,4 +181,107 @@ void ShapeContainer::setSelectedColor(const QColor &color) {
     for (auto element : allSelected) {
         element->setColor(color);
     }
+}
+
+void ShapeContainer::collectAllElements(CompositeElement* element, std::vector<CompositeElement*>& result) const {
+    result.push_back(element);
+    if (element->isGroup()) {
+        const std::vector<CompositeElement*>& children = element->getChildren();
+        for (auto child : children) {
+            collectAllElements(child, result);
+        }
+    }
+}
+
+void ShapeContainer::collectNonGroupElements(CompositeElement* element, std::vector<CompositeElement*>& result) const {
+    if (!element->isGroup()) {
+        result.push_back(element);
+    } else {
+        const std::vector<CompositeElement*>& children = element->getChildren();
+        for (auto child : children) {
+            collectNonGroupElements(child, result);
+        }
+    }
+}
+
+std::string ShapeContainer::saveToString() const
+{
+    std::ostringstream oss;
+
+    // Сохраняем количество элементов
+    oss << elements_.size() << "\n";
+
+    // Сохраняем каждый элемент
+    for (auto element : elements_) {
+        std::string elementData = element->save();
+        oss << elementData.length() << "\n";
+        oss << elementData << "\n";
+    }
+
+    return oss.str();
+}
+
+bool ShapeContainer::saveToFile(const std::string& filename) const
+{
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    file << saveToString();
+    file.close();
+
+    return true;
+}
+
+void ShapeContainer::loadFromString(const std::string& data)
+{
+    clear();  // Очищаем текущие элементы
+
+    std::istringstream iss(data);
+    int elementCount;
+    iss >> elementCount;
+
+    // Пропускаем оставшуюся часть строки (символ новой строки)
+    iss.ignore(1, '\n');
+
+    // Загружаем каждый элемент
+    for (int i = 0; i < elementCount; ++i) {
+        int dataLength;
+        iss >> dataLength;
+
+        // Пропускаем оставшуюся часть строки (символ новой строки)
+        iss.ignore(1, '\n');
+
+        // Читаем данные элемента
+        std::string elementData(dataLength, ' ');
+        iss.read(&elementData[0], dataLength);
+
+        // Создаем элемент с помощью фабрики
+        CompositeElement* element = ShapeFactory::createFromString(elementData);
+        if (element) {
+            elements_.push_back(element);
+        }
+
+        // Пропускаем оставшийся символ новой строки, если есть
+        if (iss.peek() == '\n') {
+            iss.ignore(1, '\n');
+        }
+    }
+}
+
+bool ShapeContainer::loadFromFile(const std::string& filename)
+{
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    // Читаем весь файл
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    file.close();
+
+    loadFromString(buffer.str());
+    return true;
 }

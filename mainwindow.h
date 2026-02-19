@@ -41,8 +41,11 @@ private slots:
     void clearWindow();
     void increaseSize();
     void decreaseSize();
-    void groupSelected();        // Добавлено
-    void ungroupSelected();      // Добавлено
+    void groupSelected();
+    void ungroupSelected();
+
+    void saveToFile();
+    void loadFromFile();
 
 private:
     Ui::MainWindow *ui;
@@ -54,9 +57,14 @@ private:
     void updateWindowTitle();
     void resizeSelected(int delta);
     bool canResizeSelected(int delta) const;
-    void applyResize(CompositeElement* element, int delta);  // Изменено с Shape* на CompositeElement*
+    void applyResize(CompositeElement* element, int delta);
     void applyResizeWithBounds(CompositeElement* element, int delta, int maxX, int maxY, int topMargin);  // Изменено
     bool canResizeWithBounds(CompositeElement* element, int delta, int maxX, int maxY, int topMargin);    // Изменено
+
+    void collectAllElementsForResize(CompositeElement* element, std::vector<CompositeElement*>& result);
+    void collectNonGroupElementsFromGroup(CompositeElement* element, std::vector<CompositeElement*>& result);
+    void resizeGroupElements(CompositeElement* group, int delta, int maxX, int maxY, int topMargin);
+    bool canResizeElement(CompositeElement* element, int delta, int maxX, int maxY, int topMargin);
 };
 
 #endif // MAINWINDOW_H

@@ -9,9 +9,9 @@ class Group : public CompositeElement
 {
 private:
     std::vector<CompositeElement*> children_;
-    std::vector<std::pair<int, int>> childOffsets_; // Относительные позиции детей
     bool selected_;
     QColor color_; // Цвет группы (для выделения)
+    void clearChildren();
 
 public:
     Group();
@@ -47,16 +47,18 @@ public:
     bool isGroup() const override { return true; }
 
     // Специальные методы для Group
-    void updateChildOffsets();
     bool isEmpty() const { return children_.empty(); }
     int getChildCount() const { return children_.size(); }
 
     std::string getTypeName() const override { return "Group"; }
 
-private:
-    void calculateBounds() const;
-    mutable QRect cachedBounds_;
-    mutable bool boundsValid_;
+    // Методы Serializable
+    std::string save() const override;
+    void load(const std::string& data) override;
+
+    // Методы для сохранения/загрузки детей
+    void saveChildren(std::ostream& os) const override;
+    void loadChildren(std::istream& is) override;
 };
 
 #endif // GROUP_H

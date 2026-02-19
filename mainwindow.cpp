@@ -18,6 +18,11 @@
 #include <QAction>
 #include <QColorDialog>
 #include <QMessageBox>
+#include <QFileDialog>
+#include <QFile>
+#include <QTextStream>
+#include <fstream>
+
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -164,6 +169,17 @@ void MainWindow::createToolBar() {
     ungroupAction->setToolTip("Разгруппировать выделенные группы (Ctrl+Shift+G)");
     connect(ungroupAction, &QAction::triggered, this, &MainWindow::ungroupSelected);
     toolBar->addAction(ungroupAction);
+
+    // Добавляем кнопки для сохранения/загрузки
+    QAction *saveAction = new QAction("Сохранить", this);
+    saveAction->setToolTip("Сохранить проект");
+    connect(saveAction, &QAction::triggered, this, &MainWindow::saveToFile);
+    toolBar->addAction(saveAction);
+
+    QAction *loadAction = new QAction("Загрузить", this);
+    loadAction->setToolTip("Загрузить проект");
+    connect(loadAction, &QAction::triggered, this, &MainWindow::loadFromFile);
+    toolBar->addAction(loadAction);
 
     QAction *clearAction = new QAction("Очистить", this);
     clearAction->setToolTip("Очистить все окно");
@@ -595,14 +611,59 @@ void MainWindow::resizeSelected(int delta) {
     for (int i = 0; i < shapes_.getCount(); i++) {
         CompositeElement* element = shapes_.getElement(i);
         if (element && element->getSelected()) {
-            // Для групп не применяем изменение размера через эту функцию
-            // Группы изменяют размер через изменение размера своих детей
-            if (!element->isGroup()) {
+            if (element->isGroup()) {
+                // Для групп: изменяем размер каждого элемента в группе
+                resizeGroupElements(element, delta, width(), height(), usableTop);
+            } else {
+                // Для обычных элементов
                 applyResizeWithBounds(element, delta, width(), height(), usableTop);
             }
         }
     }
     update();
+}
+
+void MainWindow::resizeGroupElements(CompositeElement* group, int delta, int maxX, int maxY, int topMargin) {
+    if (!group->isGroup()) return;
+
+    // Собираем все негрупповые элементы из группы
+    std::vector<CompositeElement*> allElements;
+    collectNonGroupElementsFromGroup(group, allElements);
+
+    // Для каждого элемента проверяем, можно ли изменить размер
+    bool canResizeAll = true;
+    for (auto element : allElements) {
+        if (!canResizeElement(element, delta, maxX, maxY, topMargin)) {
+            canResizeAll = false;
+            break;
+        }
+    }
+
+    // Если можно изменить размер всех элементов, применяем изменение
+    if (canResizeAll) {
+        for (auto element : allElements) {
+            applyResize(element, delta);
+        }
+        // Границы группы будут автоматически пересчитаны
+        // при следующем вызове getBorderRect()
+    }
+}
+
+void MainWindow::collectNonGroupElementsFromGroup(CompositeElement* element, std::vector<CompositeElement*>& result) {
+    if (element->isGroup()) {
+        const std::vector<CompositeElement*>& children = element->getChildren();
+        for (auto child : children) {
+            collectNonGroupElementsFromGroup(child, result);
+        }
+    } else {
+        result.push_back(element);
+    }
+}
+
+bool MainWindow::canResizeElement(CompositeElement* element, int delta, int maxX, int maxY, int topMargin) {
+    if (!element || element->isGroup()) return true;
+
+    return canResizeWithBounds(element, delta, maxX, maxY, topMargin);
 }
 
 void MainWindow::applyResize(CompositeElement* element, int delta) {
@@ -674,13 +735,20 @@ void MainWindow::applyResize(CompositeElement* element, int delta) {
     }
 }
 
+void MainWindow::collectAllElementsForResize(CompositeElement* element, std::vector<CompositeElement*>& result) {
+    // Просто вызываем новый метод для совместимости
+    collectNonGroupElementsFromGroup(element, result);
+}
+
 void MainWindow::applyResizeWithBounds(CompositeElement* element, int delta, int maxX, int maxY, int topMargin) {
     if (delta > 0) {
+        // Только для увеличения проверяем границы
         if (!canResizeWithBounds(element, delta, maxX, maxY, topMargin)) {
-            return;
+            return; // Не помещается - не увеличиваем
         }
     }
 
+    // Применяем изменение размера
     applyResize(element, delta);
 }
 
@@ -769,6 +837,70 @@ bool MainWindow::canResizeWithBounds(CompositeElement* element, int delta, int m
     }
 
     return true;
+}
+
+void MainWindow::saveToFile()
+{
+    // Открываем диалог для выбора файла
+    QString fileName = QFileDialog::getSaveFileName(
+        this,
+        "Сохранить проект",
+        "",
+        "Файлы проекта (*.shapes);;Все файлы (*.*)"
+        );
+
+    if (fileName.isEmpty()) {
+        return; // Пользователь отменил сохранение
+    }
+
+    // Добавляем расширение, если его нет
+    if (!fileName.endsWith(".shapes", Qt::CaseInsensitive)) {
+        fileName += ".shapes";
+    }
+
+    // Сохраняем в файл
+    if (shapes_.saveToFile(fileName.toStdString())) {
+        QMessageBox::information(this, "Сохранение", "Проект успешно сохранен!");
+    } else {
+        QMessageBox::critical(this, "Ошибка", "Не удалось сохранить проект!");
+    }
+}
+
+void MainWindow::loadFromFile()
+{
+    // Спрашиваем подтверждение, если есть несохраненные изменения
+    if (shapes_.getCount() > 0) {
+        QMessageBox::StandardButton reply = QMessageBox::question(
+            this,
+            "Загрузка проекта",
+            "Текущий проект будет потерян. Продолжить?",
+            QMessageBox::Yes | QMessageBox::No
+            );
+
+        if (reply != QMessageBox::Yes) {
+            return;
+        }
+    }
+
+    // Открываем диалог для выбора файла
+    QString fileName = QFileDialog::getOpenFileName(
+        this,
+        "Загрузить проект",
+        "",
+        "Файлы проекта (*.shapes);;Все файлы (*.*)"
+        );
+
+    if (fileName.isEmpty()) {
+        return; // Пользователь отменил загрузку
+    }
+
+    // Загружаем из файла
+    if (shapes_.loadFromFile(fileName.toStdString())) {
+        QMessageBox::information(this, "Загрузка", "Проект успешно загружен!");
+        update(); // Обновляем отображение
+    } else {
+        QMessageBox::critical(this, "Ошибка", "Не удалось загрузить проект!");
+    }
 }
 
 MainWindow::~MainWindow()
