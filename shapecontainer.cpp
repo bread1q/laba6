@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <QDebug>
 
 ShapeContainer::ShapeContainer() {}
 
@@ -14,6 +15,7 @@ ShapeContainer::~ShapeContainer() {
 void ShapeContainer::addElement(CompositeElement* element) {
     if (element != nullptr) {
         elements_.push_back(element);
+        qDebug() << "ShapeContainer::addElement - notifying";
         notifyObservers("element_added", element);
     }
 }
@@ -35,10 +37,25 @@ void ShapeContainer::clear() {
 }
 
 void ShapeContainer::clearSelection() {
+    qDebug() << "ShapeContainer::clearSelection";
+
+    // Сначала собираем все элементы, которые нужно изменить
+    std::vector<CompositeElement*> toClear;
     for (auto element : elements_) {
+        if (element && element->getSelected()) {
+            toClear.push_back(element);
+        }
+    }
+
+    // Потом меняем их выделение
+    for (auto element : toClear) {
         element->setSelected(false);
     }
-    notifyObservers("selection_changed");
+
+    // И только потом уведомляем
+    if (!toClear.empty()) {
+        notifyObservers("selection_changed");
+    }
 }
 
 void ShapeContainer::removeSelected() {
@@ -52,6 +69,7 @@ void ShapeContainer::removeSelected() {
 }
 
 void ShapeContainer::selectAll() {
+    qDebug() << "ShapeContainer::selectAll";
     for (auto element : elements_) {
         element->setSelected(true);
     }
@@ -59,7 +77,12 @@ void ShapeContainer::selectAll() {
 }
 
 void ShapeContainer::notifySelectionChanged() {
-    notifyObservers("selection_changed");
+    if (!ignoreSelectionNotifications_) {
+        qDebug() << "CONTAINER: notifySelectionChanged()";
+        notifyObservers("selection_changed");
+    } else {
+        qDebug() << "CONTAINER: notifySelectionChanged() IGNORED";
+    }
 }
 
 CompositeElement* ShapeContainer::getElement(int i) const {
@@ -312,4 +335,12 @@ bool ShapeContainer::loadFromFile(const std::string& filename)
     file.close();
     std::cout << "Loaded " << elements_.size() << " elements" << std::endl;
     return true;
+}
+
+void ShapeContainer::setIgnoreSelectionNotifications(bool ignore) {
+    ignoreSelectionNotifications_ = ignore;
+}
+
+bool ShapeContainer::isIgnoringSelectionNotifications() const {
+    return ignoreSelectionNotifications_;
 }

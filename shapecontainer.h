@@ -9,6 +9,7 @@ class ShapeContainer : public Observable
 {
 private:
     std::vector<CompositeElement*> elements_;
+    bool ignoreSelectionNotifications_;
 
 public:
     ShapeContainer();
@@ -21,7 +22,7 @@ public:
     void clearSelection();
     void removeSelected();
     void selectAll();
-    void notifySelectionChanged();
+    void notifySelectionChanged();  // ДОЛЖЕН БЫТЬ ТОЛЬКО ОДИН РАЗ!
 
     CompositeElement* getElement(int i) const;
     int getCount() const;
@@ -41,6 +42,9 @@ public:
 
     void loadFromString(const std::string& data);
     bool loadFromFile(const std::string& filename);
+
+    void setIgnoreSelectionNotifications(bool ignore);
+    bool isIgnoringSelectionNotifications() const;
 
 private:
     void collectAllElements(CompositeElement* element, std::vector<CompositeElement*>& result) const;

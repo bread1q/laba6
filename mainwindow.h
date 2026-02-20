@@ -27,6 +27,7 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+    void handleKeyEvent(QKeyEvent* event);  // Для обработки клавиш из дерева
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -49,6 +50,8 @@ private slots:
     void saveToFile();
     void loadFromFile();
 
+    void testSelection();
+
 private:
     Ui::MainWindow *ui;
     ShapeContainer shapes_;
@@ -63,7 +66,7 @@ private:
     void applyResize(CompositeElement* element, int delta);
     void applyResizeWithBounds(CompositeElement* element, int delta, int maxX, int maxY, int topMargin);
     bool canResizeWithBounds(CompositeElement* element, int delta, int maxX, int maxY, int topMargin);
-    void createNewShape(int x, int y, int topMargin);
+    void createNewShape(int x, int y);  // Убрали topMargin
 
     void collectAllElementsForResize(CompositeElement* element, std::vector<CompositeElement*>& result);
     void collectNonGroupElementsFromGroup(CompositeElement* element, std::vector<CompositeElement*>& result);
