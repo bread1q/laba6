@@ -1,8 +1,6 @@
 #include "shapecontainer.h"
 #include "shapefactory.h"
 #include "group.h"
-#include "line.h"
-#include <QPainter>
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -14,13 +12,17 @@ ShapeContainer::~ShapeContainer() {
 }
 
 void ShapeContainer::addElement(CompositeElement* element) {
-    if (element != nullptr) elements_.push_back(element);
+    if (element != nullptr) {
+        elements_.push_back(element);
+        notifyObservers("element_added", element);
+    }
 }
 
 void ShapeContainer::removeElement(int i) {
     if (i >= 0 && i < (int)elements_.size()) {
         delete elements_[i];
         elements_.erase(elements_.begin() + i);
+        notifyObservers("element_removed");
     }
 }
 
@@ -29,12 +31,14 @@ void ShapeContainer::clear() {
         delete element;
     }
     elements_.clear();
+    notifyObservers("container_changed");
 }
 
 void ShapeContainer::clearSelection() {
     for (auto element : elements_) {
         element->setSelected(false);
     }
+    notifyObservers("selection_changed");
 }
 
 void ShapeContainer::removeSelected() {
@@ -44,12 +48,18 @@ void ShapeContainer::removeSelected() {
             elements_.erase(elements_.begin() + i);
         }
     }
+    notifyObservers("element_removed");
 }
 
 void ShapeContainer::selectAll() {
     for (auto element : elements_) {
         element->setSelected(true);
     }
+    notifyObservers("selection_changed");
+}
+
+void ShapeContainer::notifySelectionChanged() {
+    notifyObservers("selection_changed");
 }
 
 CompositeElement* ShapeContainer::getElement(int i) const {
@@ -96,31 +106,24 @@ void ShapeContainer::groupSelected() {
     std::vector<CompositeElement*> selected = getSelectedElements();
 
     if (selected.size() < 2) {
-        return; // Нужно минимум 2 элемента для группировки
+        return;
     }
 
-    // Создаем новую группу
     Group* newGroup = new Group();
 
-    // Добавляем выбранные элементы в группу и удаляем их из контейнера
     for (auto element : selected) {
-        // Находим элемент в контейнере и удаляем его
         for (int i = (int)elements_.size() - 1; i >= 0; i--) {
             if (elements_[i] == element) {
-                // Добавляем в группу
                 newGroup->addChild(element);
-                // Удаляем из контейнера, но НЕ удаляем память
                 elements_.erase(elements_.begin() + i);
                 break;
             }
         }
     }
 
-    // Добавляем новую группу в контейнер
     elements_.push_back(newGroup);
     newGroup->setSelected(true);
-
-    treeWidget_->updateTree(&shapes_);
+    notifyObservers("container_changed");
 }
 
 void ShapeContainer::ungroupSelected() {
@@ -130,21 +133,15 @@ void ShapeContainer::ungroupSelected() {
         if (element->isGroup()) {
             Group* group = dynamic_cast<Group*>(element);
             if (group) {
-                // Получаем детей группы
                 const std::vector<CompositeElement*>& children = group->getChildren();
 
-                // Добавляем детей обратно в контейнер
                 for (auto child : children) {
-                    // Устанавливаем выделение как у группы
                     child->setSelected(element->getSelected());
                     elements_.push_back(child);
                 }
 
-                // Находим группу в контейнере и удаляем ее
                 for (int i = (int)elements_.size() - 1; i >= 0; i--) {
                     if (elements_[i] == element) {
-                        // Удаляем группу, но НЕ удаляем детей (они уже добавлены в контейнер)
-                        // Важно: очищаем вектор детей, чтобы деструктор не удалил их
                         const_cast<std::vector<CompositeElement*>&>(group->getChildren()).clear();
                         delete elements_[i];
                         elements_.erase(elements_.begin() + i);
@@ -154,7 +151,7 @@ void ShapeContainer::ungroupSelected() {
             }
         }
     }
-    treeWidget_->updateTree(&shapes_);
+    notifyObservers("container_changed");
 }
 
 void ShapeContainer::moveSelected(int dx, int dy, int maxX, int maxY, int topMargin) {
@@ -163,17 +160,15 @@ void ShapeContainer::moveSelected(int dx, int dy, int maxX, int maxY, int topMar
     int right = maxX;
     int bottom = maxY;
 
-    // Для каждого выбранного элемента пытаемся переместить его
     for (auto element : elements_) {
         if (element->getSelected()) {
-            // Используем safeMove для проверки границ
             element->safeMove(dx, dy, left, top, right, bottom);
         }
     }
+    notifyObservers("elements_moved");
 }
 
 void ShapeContainer::setSelectedColor(const QColor &color) {
-    // Собираем все выбранные элементы (включая вложенные в группы)
     std::vector<CompositeElement*> allSelected;
     for (auto element : elements_) {
         if (element->getSelected()) {
@@ -181,10 +176,10 @@ void ShapeContainer::setSelectedColor(const QColor &color) {
         }
     }
 
-    // Устанавливаем цвет всем выбранным элементам
     for (auto element : allSelected) {
         element->setColor(color);
     }
+    notifyObservers("elements_changed");
 }
 
 void ShapeContainer::collectAllElements(CompositeElement* element, std::vector<CompositeElement*>& result) const {
@@ -211,11 +206,8 @@ void ShapeContainer::collectNonGroupElements(CompositeElement* element, std::vec
 std::string ShapeContainer::saveToString() const
 {
     std::ostringstream oss;
-
-    // Сохраняем количество элементов
     oss << elements_.size() << "\n";
 
-    // Сохраняем каждый элемент
     for (auto element : elements_) {
         std::string elementData = element->save();
         oss << elementData.length() << "\n";
@@ -232,13 +224,10 @@ bool ShapeContainer::saveToFile(const std::string& filename) const
         return false;
     }
 
-    // Сохраняем количество элементов
     file << elements_.size() << "\n";
 
-    // Сохраняем каждый элемент
     for (auto element : elements_) {
         std::string elementData = element->save();
-        // Убираем лишние пробелы в конце строки, если есть
         while (!elementData.empty() && elementData.back() == ' ') {
             elementData.pop_back();
         }
@@ -251,34 +240,26 @@ bool ShapeContainer::saveToFile(const std::string& filename) const
 
 void ShapeContainer::loadFromString(const std::string& data)
 {
-    clear();  // Очищаем текущие элементы
+    clear();
 
     std::istringstream iss(data);
     int elementCount;
     iss >> elementCount;
-
-    // Пропускаем оставшуюся часть строки (символ новой строки)
     iss.ignore(1, '\n');
 
-    // Загружаем каждый элемент
     for (int i = 0; i < elementCount; ++i) {
         int dataLength;
         iss >> dataLength;
-
-        // Пропускаем оставшуюся часть строки (символ новой строки)
         iss.ignore(1, '\n');
 
-        // Читаем данные элемента
         std::string elementData(dataLength, ' ');
         iss.read(&elementData[0], dataLength);
 
-        // Создаем элемент с помощью фабрики
         CompositeElement* element = ShapeFactory::createFromString(elementData);
         if (element) {
             elements_.push_back(element);
         }
 
-        // Пропускаем оставшийся символ новой строки, если есть
         if (iss.peek() == '\n') {
             iss.ignore(1, '\n');
         }
@@ -293,12 +274,11 @@ bool ShapeContainer::loadFromFile(const std::string& filename)
         return false;
     }
 
-    clear();  // Очищаем текущие элементы
+    clear();
 
     std::string line;
     int lineNumber = 0;
 
-    // Читаем первую строку - количество элементов
     if (!std::getline(file, line)) {
         std::cerr << "Empty file" << std::endl;
         return false;
@@ -307,16 +287,14 @@ bool ShapeContainer::loadFromFile(const std::string& filename)
     int elementCount = std::stoi(line);
     std::cout << "Loading " << elementCount << " elements" << std::endl;
 
-    // Загружаем каждый элемент
     for (int i = 0; i < elementCount; ++i) {
         if (!std::getline(file, line)) {
             std::cerr << "Unexpected end of file at element " << i << std::endl;
             break;
         }
 
-        // Пропускаем пустые строки
         if (line.empty()) {
-            i--; // Не считаем пустую строку за элемент
+            i--;
             continue;
         }
 

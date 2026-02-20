@@ -52,24 +52,23 @@ private slots:
 private:
     Ui::MainWindow *ui;
     ShapeContainer shapes_;
+    ObjectTreeWidget* treeWidget_;
+    QSplitter* splitter_;
     ShapeType currentShapeType_ = CIRCLE;
 
     void createMenu();
     void createToolBar();
     void updateWindowTitle();
     void resizeSelected(int delta);
-    bool canResizeSelected(int delta) const;
     void applyResize(CompositeElement* element, int delta);
-    void applyResizeWithBounds(CompositeElement* element, int delta, int maxX, int maxY, int topMargin);  // Изменено
-    bool canResizeWithBounds(CompositeElement* element, int delta, int maxX, int maxY, int topMargin);    // Изменено
+    void applyResizeWithBounds(CompositeElement* element, int delta, int maxX, int maxY, int topMargin);
+    bool canResizeWithBounds(CompositeElement* element, int delta, int maxX, int maxY, int topMargin);
+    void createNewShape(int x, int y, int topMargin);
 
     void collectAllElementsForResize(CompositeElement* element, std::vector<CompositeElement*>& result);
     void collectNonGroupElementsFromGroup(CompositeElement* element, std::vector<CompositeElement*>& result);
     void resizeGroupElements(CompositeElement* group, int delta, int maxX, int maxY, int topMargin);
     bool canResizeElement(CompositeElement* element, int delta, int maxX, int maxY, int topMargin);
-
-    ObjectTreeWidget* treeWidget_;
-    QSplitter* splitter_;
 };
 
 #endif // MAINWINDOW_H

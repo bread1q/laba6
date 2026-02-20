@@ -3,8 +3,9 @@
 
 #include <vector>
 #include "composite.h"
+#include "observer.h"
 
-class ShapeContainer
+class ShapeContainer : public Observable
 {
 private:
     std::vector<CompositeElement*> elements_;
@@ -20,16 +21,15 @@ public:
     void clearSelection();
     void removeSelected();
     void selectAll();
+    void notifySelectionChanged();
 
     CompositeElement* getElement(int i) const;
     int getCount() const;
 
-    // Методы для работы с выделением
     std::vector<CompositeElement*> getSelectedElements() const;
     bool hasSelectedElements() const;
     int getSelectedCount() const;
 
-    // Методы для группировки/разгруппировки
     void groupSelected();
     void ungroupSelected();
 
