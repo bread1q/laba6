@@ -69,22 +69,95 @@ void ShapeContainer::clearSelection() {
 }
 
 void ShapeContainer::removeSelected() {
+    qDebug() << "\n=== removeSelected ===";
+    qDebug() << "Elements before:" << elements_.size();
+    for (size_t i = 0; i < elements_.size(); i++) {
+        qDebug() << "  Element" << i << ":" << elements_[i] << "selected:" << elements_[i]->getSelected();
+    }
+
+    qDebug() << "Arrows before:" << arrows_.size();
+    for (size_t i = 0; i < arrows_.size(); i++) {
+        qDebug() << "  Arrow" << i << ":" << arrows_[i]
+                 << "source:" << arrows_[i]->getSource()
+                 << "target:" << arrows_[i]->getTarget()
+                 << "selected:" << arrows_[i]->getSelected();
+    }
+
+    // Сначала собираем все элементы для удаления
+    std::vector<CompositeElement*> toDelete;
+    for (auto element : elements_) {
+        if (element && element->getSelected()) {
+            toDelete.push_back(element);
+            qDebug() << "  Will delete element:" << element;
+        }
+    }
+
+    if (toDelete.empty()) {
+        qDebug() << "No elements to delete";
+    }
+
+    // Удаляем все стрелки, связанные с этими элементами
+    qDebug() << "Checking arrows for deletion...";
+    for (int i = arrows_.size() - 1; i >= 0; i--) {
+        Arrow* arrow = arrows_[i];
+        bool shouldDelete = false;
+
+        qDebug() << "  Arrow" << i << "source:" << arrow->getSource() << "target:" << arrow->getTarget();
+
+        for (auto element : toDelete) {
+            if (arrow->getSource() == element) {
+                qDebug() << "    Source matches element" << element;
+                shouldDelete = true;
+                break;
+            }
+            if (arrow->getTarget() == element) {
+                qDebug() << "    Target matches element" << element;
+                shouldDelete = true;
+                break;
+            }
+        }
+
+        if (shouldDelete) {
+            qDebug() << "  DELETING arrow" << i;
+            delete arrow;
+            arrows_.erase(arrows_.begin() + i);
+        } else {
+            qDebug() << "  Keeping arrow" << i;
+        }
+    }
+
     // Удаляем выбранные стрелки
+    qDebug() << "Checking for selected arrows...";
     for (int i = arrows_.size() - 1; i >= 0; i--) {
         if (arrows_[i]->getSelected()) {
+            qDebug() << "Deleting selected arrow:" << arrows_[i];
             delete arrows_[i];
             arrows_.erase(arrows_.begin() + i);
         }
     }
 
-    // Удаляем выбранные элементы
-    for (int i = elements_.size() - 1; i >= 0; i--) {
-        if (elements_[i]->getSelected()) {
-            removeArrowsWithElement(elements_[i]);
-            delete elements_[i];
-            elements_.erase(elements_.begin() + i);
+    // Удаляем элементы
+    qDebug() << "Deleting elements...";
+    for (auto element : toDelete) {
+        for (int i = elements_.size() - 1; i >= 0; i--) {
+            if (elements_[i] == element) {
+                qDebug() << "Deleting element:" << element;
+                delete elements_[i];
+                elements_.erase(elements_.begin() + i);
+                break;
+            }
         }
     }
+
+    qDebug() << "Elements after:" << elements_.size();
+    qDebug() << "Arrows after:" << arrows_.size();
+    for (size_t i = 0; i < arrows_.size(); i++) {
+        qDebug() << "  Arrow" << i << ":" << arrows_[i]
+                 << "source:" << arrows_[i]->getSource()
+                 << "target:" << arrows_[i]->getTarget();
+    }
+    qDebug() << "=== removeSelected finished ===\n";
+
     notifyObservers("element_removed");
 }
 
@@ -151,6 +224,44 @@ void ShapeContainer::groupSelected() {
         return;
     }
 
+    qDebug() << "=== groupSelected ===";
+    qDebug() << "Selected elements:" << selected.size();
+
+    // Сохраняем все стрелки, которые связаны с выбранными элементами
+    std::vector<Arrow*> arrowsToRemove;
+    std::vector<std::tuple<CompositeElement*, CompositeElement*, bool>> arrowsToRecreate;
+
+    for (auto arrow : arrows_) {
+        CompositeElement* source = arrow->getSource();
+        CompositeElement* target = arrow->getTarget();
+
+        bool sourceInGroup = (std::find(selected.begin(), selected.end(), source) != selected.end());
+        bool targetInGroup = (std::find(selected.begin(), selected.end(), target) != selected.end());
+
+        // Если оба конца стрелки попадают в группу - стрелка останется внутри группы
+        if (sourceInGroup && targetInGroup) {
+            qDebug() << "Arrow both ends in group - will be inside group";
+            arrowsToRemove.push_back(arrow);
+            // Внутри группы стрелка сохранится, но мы ее потом пересоздадим
+            arrowsToRecreate.push_back({source, target, arrow->isBidirectional()});
+        }
+        // Если только один конец в группе - стрелка будет вести от/к группе
+        else if (sourceInGroup || targetInGroup) {
+            qDebug() << "Arrow one end in group - will be recreated with group";
+            arrowsToRemove.push_back(arrow);
+            arrowsToRecreate.push_back({source, target, arrow->isBidirectional()});
+        }
+    }
+
+    // Удаляем старые стрелки
+    for (auto arrow : arrowsToRemove) {
+        auto it = std::find(arrows_.begin(), arrows_.end(), arrow);
+        if (it != arrows_.end()) {
+            delete *it;
+            arrows_.erase(it);
+        }
+    }
+
     Group* newGroup = new Group();
 
     for (auto element : selected) {
@@ -165,16 +276,42 @@ void ShapeContainer::groupSelected() {
 
     elements_.push_back(newGroup);
     newGroup->setSelected(true);
+
+    // Восстанавливаем стрелки
+    for (auto& [source, target, bidirectional] : arrowsToRecreate) {
+        // Проверяем, где теперь находятся source и target
+        CompositeElement* newSource = source;
+        CompositeElement* newTarget = target;
+
+        // Если source был в группе, заменяем его на группу
+        if (std::find(selected.begin(), selected.end(), source) != selected.end()) {
+            newSource = newGroup;
+        }
+        // Если target был в группе, заменяем его на группу
+        if (std::find(selected.begin(), selected.end(), target) != selected.end()) {
+            newTarget = newGroup;
+        }
+
+        qDebug() << "Recreating arrow from" << newSource << "to" << newTarget;
+        addArrow(newSource, newTarget, bidirectional);
+    }
+
+    qDebug() << "=== groupSelected finished ===";
+
     notifyObservers("container_changed");
 }
 
 void ShapeContainer::ungroupSelected() {
     std::vector<CompositeElement*> selected = getSelectedElements();
+    bool changed = false;
 
     for (auto element : selected) {
-        if (element->isGroup()) {
+        if (element && element->isGroup()) {
             Group* group = dynamic_cast<Group*>(element);
             if (group) {
+                // Удаляем все стрелки, связанные с этой группой
+                removeArrowsWithElement(group);
+
                 const std::vector<CompositeElement*>& children = group->getChildren();
 
                 for (auto child : children) {
@@ -187,13 +324,17 @@ void ShapeContainer::ungroupSelected() {
                         const_cast<std::vector<CompositeElement*>&>(group->getChildren()).clear();
                         delete elements_[i];
                         elements_.erase(elements_.begin() + i);
+                        changed = true;
                         break;
                     }
                 }
             }
         }
     }
-    notifyObservers("container_changed");
+
+    if (changed) {
+        notifyObservers("container_changed");
+    }
 }
 
 void ShapeContainer::moveSelected(int dx, int dy, int maxX, int maxY, int topMargin) {
@@ -202,11 +343,49 @@ void ShapeContainer::moveSelected(int dx, int dy, int maxX, int maxY, int topMar
     int right = maxX;
     int bottom = maxY;
 
+    qDebug() << "=== moveSelected ===";
+    qDebug() << "dx:" << dx << "dy:" << dy;
+
+    // Сначала собираем все выбранные элементы
+    std::vector<CompositeElement*> selected;
     for (auto element : elements_) {
         if (element && element->getSelected()) {
-            element->safeMove(dx, dy, left, top, right, bottom);
+            selected.push_back(element);
+            qDebug() << "Selected element:" << element;
         }
     }
+
+    // Перемещаем выбранные элементы
+    for (auto element : selected) {
+        element->safeMove(dx, dy, left, top, right, bottom);
+    }
+
+    // Теперь обрабатываем стрелки: если переместился source, двигаем target
+    for (auto arrow : arrows_) {
+        CompositeElement* source = arrow->getSource();
+        CompositeElement* target = arrow->getTarget();
+
+        qDebug() << "Arrow source:" << source << "target:" << target;
+
+        // Если source был перемещен (он в selected), двигаем target
+        if (std::find(selected.begin(), selected.end(), source) != selected.end()) {
+            qDebug() << "Moving target because source moved";
+            if (target) {
+                target->safeMove(dx, dy, left, top, right, bottom);
+            }
+        }
+
+        // Если стрелка двунаправленная и переместился target, двигаем source
+        if (arrow->isBidirectional()) {
+            if (std::find(selected.begin(), selected.end(), target) != selected.end()) {
+                qDebug() << "Moving source because target moved (bidirectional)";
+                if (source) {
+                    source->safeMove(dx, dy, left, top, right, bottom);
+                }
+            }
+        }
+    }
+
     notifyObservers("elements_moved");
 }
 
@@ -411,9 +590,12 @@ CompositeElement* ShapeContainer::findElementAt(int x, int y, bool includeArrows
 }
 
 void ShapeContainer::removeArrowsWithElement(CompositeElement* element) {
+    qDebug() << "removeArrowsWithElement for" << element;
+
     for (int i = arrows_.size() - 1; i >= 0; i--) {
         Arrow* arrow = arrows_[i];
         if (arrow->getSource() == element || arrow->getTarget() == element) {
+            qDebug() << "  Removing arrow" << arrow;
             delete arrow;
             arrows_.erase(arrows_.begin() + i);
         }

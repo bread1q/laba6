@@ -4,28 +4,26 @@
 Arrow::Arrow(CompositeElement* source, CompositeElement* target, bool bidirectional)
     : source_(source), target_(target), selected_(false), bidirectional_(bidirectional) {
 
-    if (source_) {
-        // Подписываемся на перемещение source
-        // В реальном проекте нужно, чтобы CompositeElement был Observable
-    }
-    if (target_) {
-        // Подписываемся на перемещение target
-    }
+    qDebug() << "Arrow created from" << source << "to" << target;
 }
 
 Arrow::~Arrow() {
-    // Не удаляем source и target - они принадлежат контейнеру
+    qDebug() << "Arrow destroyed";
 }
 
 void Arrow::draw(QPainter &painter) const {
-    if (!source_ || !target_) return;
+    if (!source_ || !target_) {
+        qDebug() << "Arrow::draw - source or target is null";
+        return;
+    }
+
+    // Проверяем, что объекты все еще существуют (можно добавить проверку через контейнер)
 
     QPoint sourceCenter = getSourceCenter();
     QPoint targetCenter = getTargetCenter();
 
     painter.save();
 
-    // Настройка пера
     if (selected_) {
         painter.setPen(QPen(Qt::blue, 3, Qt::DashLine));
         painter.setBrush(Qt::blue);
@@ -34,13 +32,10 @@ void Arrow::draw(QPainter &painter) const {
         painter.setBrush(Qt::darkGreen);
     }
 
-    // Рисуем линию
     painter.drawLine(sourceCenter, targetCenter);
 
-    // Рисуем стрелку (наконечник) от source к target
     drawArrowHead(painter, sourceCenter, targetCenter);
 
-    // Если двунаправленная, рисуем вторую стрелку
     if (bidirectional_) {
         drawArrowHead(painter, targetCenter, sourceCenter);
     }
@@ -54,7 +49,7 @@ bool Arrow::contains(int x, int y) const {
 }
 
 QRect Arrow::getBorderRect() const {
-    if (!source_ || !target_) return QRect();
+    if (!source_ || !target_) return QRect(0, 0, 0, 0);
 
     QPoint sourceCenter = getSourceCenter();
     QPoint targetCenter = getTargetCenter();
@@ -73,16 +68,15 @@ QRect Arrow::getSafeBorderRect(int margin) const {
 }
 
 void Arrow::move(int dx, int dy) {
-    // Стрелка не перемещается самостоятельно
-    // Она следует за объектами
+    // Стрелка не перемещается
 }
 
 bool Arrow::checkBounds(int left, int top, int right, int bottom) const {
-    return true; // Стрелка не проверяет границы
+    return true;
 }
 
 bool Arrow::safeMove(int dx, int dy, int left, int top, int right, int bottom) {
-    return true; // Стрелка не перемещается
+    return true;
 }
 
 bool Arrow::canChangeSize(int left, int top, int right, int bottom, int margin) const {
@@ -102,7 +96,7 @@ QColor Arrow::getColor() const {
 }
 
 void Arrow::setColor(const QColor& color) {
-    // Стрелка не меняет цвет
+    // ничего не делаем
 }
 
 int Arrow::getX() const {
@@ -116,11 +110,11 @@ int Arrow::getY() const {
 }
 
 void Arrow::setPosition(int x, int y) {
-    // Стрелка не меняет позицию напрямую
+    // ничего не делаем
 }
 
 void Arrow::setPositionRelative(int dx, int dy) {
-    // Стрелка не меняет позицию напрямую
+    // ничего не делаем
 }
 
 const std::vector<CompositeElement*>& Arrow::getChildren() const {
@@ -129,16 +123,12 @@ const std::vector<CompositeElement*>& Arrow::getChildren() const {
 }
 
 void Arrow::update(const std::string& eventType, void* data) {
-    if (eventType == "moved" || eventType == "element_changed") {
-        // При перемещении source или target нужно перерисовать стрелку
-        // В реальном проекте здесь будет уведомление контейнера
-    }
+    // ничего не делаем
 }
 
 std::string Arrow::save() const {
     std::ostringstream oss;
     oss << "Arrow ";
-    // Сохраняем указатели как адреса (для простоты)
     oss << reinterpret_cast<uintptr_t>(source_) << " "
         << reinterpret_cast<uintptr_t>(target_) << " "
         << (bidirectional_ ? "1" : "0") << " "
@@ -156,8 +146,6 @@ void Arrow::load(const std::string& data) {
 
     bidirectional_ = (bidir != 0);
     selected_ = (selected != 0);
-
-    // Адреса будут восстановлены позже
 }
 
 QPoint Arrow::getSourceCenter() const {
@@ -189,6 +177,8 @@ void Arrow::drawArrowHead(QPainter& painter, const QPoint& from, const QPoint& t
 }
 
 bool Arrow::isPointNearLine(int px, int py, int threshold) const {
+    if (!source_ || !target_) return false;
+
     QPoint p1 = getSourceCenter();
     QPoint p2 = getTargetCenter();
 

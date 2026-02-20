@@ -540,9 +540,10 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
     switch (event->key()) {
     case Qt::Key_Delete:
     case Qt::Key_Backspace:
+        qDebug() << "Delete key pressed";
         shapes_.removeSelected();
-        needUpdate = true;
         treeWidget_->rebuildTree();
+        needUpdate = true;
         break;
 
     case Qt::Key_1:
@@ -571,19 +572,19 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
         break;
 
     case Qt::Key_Left:
-        dx = -5;
+        dx = -10;
         break;
 
     case Qt::Key_Right:
-        dx = 5;
+        dx = 10;
         break;
 
     case Qt::Key_Up:
-        dy = -5;
+        dy = -10;
         break;
 
     case Qt::Key_Down:
-        dy = 5;
+        dy = 10;
         break;
 
     case Qt::Key_Escape:
