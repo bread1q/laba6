@@ -2,6 +2,7 @@
 #include "./ui_mainwindow.h"
 #include "composite.h"
 #include "group.h"
+#include "arrow.h"
 #include "circle.h"
 #include "rectangle.h"
 #include "square.h"
@@ -10,8 +11,6 @@
 #include <QPainter>
 #include <QMouseEvent>
 #include <QKeyEvent>
-#include <algorithm>
-#include <cmath>
 #include <QMenu>
 #include <QMenuBar>
 #include <QToolBar>
@@ -22,6 +21,8 @@
 #include <QFile>
 #include <QTextStream>
 #include <fstream>
+#include <algorithm>
+#include <cmath>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -53,6 +54,8 @@ MainWindow::MainWindow(QWidget *parent)
     createMenu();
     createToolBar();
     updateWindowTitle();
+
+    arrowMode_ = false;
 }
 
 void MainWindow::createMenu() {
@@ -219,9 +222,23 @@ void MainWindow::createToolBar() {
     connect(decreaseAction, &QAction::triggered, this, &MainWindow::decreaseSize);
     toolBar->addAction(decreaseAction);
 
-    QAction *testAction = new QAction("Тест", this);
-    connect(testAction, &QAction::triggered, this, &MainWindow::testSelection);
-    toolBar->addAction(testAction);
+    toolBar->addSeparator();
+
+    QAction* arrowModeAction = new QAction("Режим стрелки", this);
+    arrowModeAction->setToolTip("Режим создания стрелки");
+    arrowModeAction->setCheckable(true);
+    connect(arrowModeAction, &QAction::toggled, this, &MainWindow::setArrowMode);
+    toolBar->addAction(arrowModeAction);
+
+    QAction* addArrowAction = new QAction("Добавить стрелку", this);
+    addArrowAction->setToolTip("Создать стрелку между двумя выделенными объектами");
+    connect(addArrowAction, &QAction::triggered, [this]() { addArrow(false); });
+    toolBar->addAction(addArrowAction);
+
+    QAction* addBidirArrowAction = new QAction("Двунаправленная", this);
+    addBidirArrowAction->setToolTip("Создать двунаправленную стрелку");
+    connect(addBidirArrowAction, &QAction::triggered, [this]() { addArrow(true); });
+    toolBar->addAction(addBidirArrowAction);
 }
 
 void MainWindow::selectCircle() {
@@ -322,6 +339,12 @@ void MainWindow::paintEvent(QPaintEvent *event) {
         if (element) {
             element->draw(painter);
         }
+    }
+
+    // Рисуем все стрелки
+    std::vector<Arrow*> arrows = shapes_.getArrows();
+    for (Arrow* arrow : arrows) {
+        arrow->draw(painter);
     }
 
     painter.restore();
@@ -447,35 +470,49 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
 
         bool ctrlPressed = event->modifiers() & Qt::ControlModifier;
 
-        CompositeElement* clicked = nullptr;
-        for (int i = shapes_.getCount() - 1; i >= 0; i--) {
-            CompositeElement* element = shapes_.getElement(i);
-            if (element && element->contains(x, y)) {
-                clicked = element;
-                break;
+        // Ищем объект под курсором (включая стрелки)
+        CompositeElement* clicked = shapes_.findElementAt(x, y, true);
+
+        if (arrowMode_) {
+            // Режим создания стрелки
+            if (!shapes_.getArrowSource()) {
+                // Выбираем первый объект
+                if (clicked && !dynamic_cast<Arrow*>(clicked)) {
+                    shapes_.setArrowSource(clicked);
+                    shapes_.clearSelection();
+                    clicked->setSelected(true);
+                }
+            } else {
+                // Выбираем второй объект и создаем стрелку
+                if (clicked && !dynamic_cast<Arrow*>(clicked) &&
+                    clicked != shapes_.getArrowSource()) {
+                    shapes_.addArrow(shapes_.getArrowSource(), clicked, false);
+                    shapes_.clearSelection();
+                    shapes_.clearArrowSource();
+                    arrowMode_ = false;
+                    treeWidget_->rebuildTree();
+                }
             }
+            update();
+            return;
         }
 
+        // Обычный режим выделения
         if (ctrlPressed) {
             if (clicked) {
-                // С Ctrl: инвертируем выделение у кликнутого объекта
                 clicked->setSelected(!clicked->getSelected());
                 treeWidget_->syncSelectionFromContainer();
             } else {
-                // С Ctrl на пустом месте: создаем новый объект, выделение не меняем
                 createNewShape(x, y);
             }
         } else {
             if (clicked) {
                 if (!clicked->getSelected()) {
-                    // Клик на невыделенный объект без Ctrl: снимаем всё и выделяем его
                     shapes_.clearSelection();
                     clicked->setSelected(true);
                     treeWidget_->syncSelectionFromContainer();
                 }
-                // Если объект уже выделен - ничего не делаем
             } else {
-                // Клик на пустом месте без Ctrl: снимаем выделение
                 shapes_.clearSelection();
                 treeWidget_->syncSelectionFromContainer();
                 createNewShape(x, y);
@@ -485,8 +522,9 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
         update();
     }
     else if (event->button() == Qt::RightButton) {
-        // Правый клик - всегда снимаем выделение
         shapes_.clearSelection();
+        shapes_.clearArrowSource();
+        arrowMode_ = false;
         treeWidget_->syncSelectionFromContainer();
         update();
     }
@@ -912,6 +950,30 @@ void MainWindow::testSelection() {
         shapes_.getElement(0)->setSelected(true);
         shapes_.notifySelectionChanged();
         update();
+    }
+}
+
+void MainWindow::addArrow(bool bidirectional) {
+    std::vector<CompositeElement*> selected = shapes_.getSelectedElements();
+    if (selected.size() != 2) {
+        QMessageBox::information(this, "Стрелка",
+                                 "Выберите ровно два объекта для создания стрелки");
+        return;
+    }
+
+    shapes_.addArrow(selected[0], selected[1], bidirectional);
+    shapes_.clearSelection();
+    treeWidget_->rebuildTree();
+    update();
+}
+
+void MainWindow::setArrowMode(bool enabled) {
+    arrowMode_ = enabled;
+    if (enabled) {
+        shapes_.clearSelection();
+        shapes_.clearArrowSource();
+    } else {
+        shapes_.clearArrowSource();
     }
 }
 

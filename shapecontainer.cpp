@@ -1,12 +1,13 @@
 #include "shapecontainer.h"
 #include "shapefactory.h"
 #include "group.h"
+#include "arrow.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
 #include <QDebug>
 
-ShapeContainer::ShapeContainer() {}
+ShapeContainer::ShapeContainer() : arrowSource_(nullptr) {}
 
 ShapeContainer::~ShapeContainer() {
     clear();
@@ -33,13 +34,18 @@ void ShapeContainer::clear() {
         delete element;
     }
     elements_.clear();
+
+    for (auto arrow : arrows_) {
+        delete arrow;
+    }
+    arrows_.clear();
+
     notifyObservers("container_changed");
 }
 
 void ShapeContainer::clearSelection() {
     qDebug() << "ShapeContainer::clearSelection";
 
-    // Сначала собираем все элементы, которые нужно изменить
     std::vector<CompositeElement*> toClear;
     for (auto element : elements_) {
         if (element && element->getSelected()) {
@@ -47,20 +53,34 @@ void ShapeContainer::clearSelection() {
         }
     }
 
-    // Потом меняем их выделение
     for (auto element : toClear) {
         element->setSelected(false);
     }
 
-    // И только потом уведомляем
+    for (auto arrow : arrows_) {
+        if (arrow && arrow->getSelected()) {
+            arrow->setSelected(false);
+        }
+    }
+
     if (!toClear.empty()) {
         notifyObservers("selection_changed");
     }
 }
 
 void ShapeContainer::removeSelected() {
-    for (int i = (int)elements_.size() - 1; i >= 0; i--) {
+    // Удаляем выбранные стрелки
+    for (int i = arrows_.size() - 1; i >= 0; i--) {
+        if (arrows_[i]->getSelected()) {
+            delete arrows_[i];
+            arrows_.erase(arrows_.begin() + i);
+        }
+    }
+
+    // Удаляем выбранные элементы
+    for (int i = elements_.size() - 1; i >= 0; i--) {
         if (elements_[i]->getSelected()) {
+            removeArrowsWithElement(elements_[i]);
             delete elements_[i];
             elements_.erase(elements_.begin() + i);
         }
@@ -73,16 +93,15 @@ void ShapeContainer::selectAll() {
     for (auto element : elements_) {
         element->setSelected(true);
     }
+    for (auto arrow : arrows_) {
+        arrow->setSelected(true);
+    }
     notifyObservers("selection_changed");
 }
 
 void ShapeContainer::notifySelectionChanged() {
-    if (!ignoreSelectionNotifications_) {
-        qDebug() << "CONTAINER: notifySelectionChanged()";
-        notifyObservers("selection_changed");
-    } else {
-        qDebug() << "CONTAINER: notifySelectionChanged() IGNORED";
-    }
+    qDebug() << "CONTAINER: notifySelectionChanged()";
+    notifyObservers("selection_changed");
 }
 
 CompositeElement* ShapeContainer::getElement(int i) const {
@@ -99,7 +118,7 @@ int ShapeContainer::getCount() const {
 std::vector<CompositeElement*> ShapeContainer::getSelectedElements() const {
     std::vector<CompositeElement*> selected;
     for (auto element : elements_) {
-        if (element->getSelected()) {
+        if (element && element->getSelected()) {
             selected.push_back(element);
         }
     }
@@ -108,7 +127,7 @@ std::vector<CompositeElement*> ShapeContainer::getSelectedElements() const {
 
 bool ShapeContainer::hasSelectedElements() const {
     for (auto element : elements_) {
-        if (element->getSelected()) {
+        if (element && element->getSelected()) {
             return true;
         }
     }
@@ -118,7 +137,7 @@ bool ShapeContainer::hasSelectedElements() const {
 int ShapeContainer::getSelectedCount() const {
     int count = 0;
     for (auto element : elements_) {
-        if (element->getSelected()) {
+        if (element && element->getSelected()) {
             count++;
         }
     }
@@ -184,7 +203,7 @@ void ShapeContainer::moveSelected(int dx, int dy, int maxX, int maxY, int topMar
     int bottom = maxY;
 
     for (auto element : elements_) {
-        if (element->getSelected()) {
+        if (element && element->getSelected()) {
             element->safeMove(dx, dy, left, top, right, bottom);
         }
     }
@@ -194,7 +213,7 @@ void ShapeContainer::moveSelected(int dx, int dy, int maxX, int maxY, int topMar
 void ShapeContainer::setSelectedColor(const QColor &color) {
     std::vector<CompositeElement*> allSelected;
     for (auto element : elements_) {
-        if (element->getSelected()) {
+        if (element && element->getSelected()) {
             collectAllElements(element, allSelected);
         }
     }
@@ -337,10 +356,66 @@ bool ShapeContainer::loadFromFile(const std::string& filename)
     return true;
 }
 
-void ShapeContainer::setIgnoreSelectionNotifications(bool ignore) {
-    ignoreSelectionNotifications_ = ignore;
+// Методы для работы со стрелками
+void ShapeContainer::addArrow(CompositeElement* source, CompositeElement* target, bool bidirectional) {
+    if (!source || !target || source == target) return;
+
+    Arrow* arrow = new Arrow(source, target, bidirectional);
+    arrows_.push_back(arrow);
+    notifyObservers("element_added", arrow);
 }
 
-bool ShapeContainer::isIgnoringSelectionNotifications() const {
-    return ignoreSelectionNotifications_;
+void ShapeContainer::removeArrow(Arrow* arrow) {
+    auto it = std::find(arrows_.begin(), arrows_.end(), arrow);
+    if (it != arrows_.end()) {
+        delete *it;
+        arrows_.erase(it);
+        notifyObservers("element_removed");
+    }
+}
+
+void ShapeContainer::removeSelectedArrows() {
+    for (int i = arrows_.size() - 1; i >= 0; i--) {
+        if (arrows_[i]->getSelected()) {
+            delete arrows_[i];
+            arrows_.erase(arrows_.begin() + i);
+        }
+    }
+    notifyObservers("element_removed");
+}
+
+void ShapeContainer::drawArrows(QPainter& painter) const {
+    for (auto arrow : arrows_) {
+        arrow->draw(painter);
+    }
+}
+
+CompositeElement* ShapeContainer::findElementAt(int x, int y, bool includeArrows) {
+    // Сначала проверяем стрелки (они обычно тоньше)
+    if (includeArrows) {
+        for (int i = arrows_.size() - 1; i >= 0; i--) {
+            if (arrows_[i]->contains(x, y)) {
+                return arrows_[i];
+            }
+        }
+    }
+
+    // Потом проверяем обычные элементы
+    for (int i = elements_.size() - 1; i >= 0; i--) {
+        if (elements_[i]->contains(x, y)) {
+            return elements_[i];
+        }
+    }
+
+    return nullptr;
+}
+
+void ShapeContainer::removeArrowsWithElement(CompositeElement* element) {
+    for (int i = arrows_.size() - 1; i >= 0; i--) {
+        Arrow* arrow = arrows_[i];
+        if (arrow->getSource() == element || arrow->getTarget() == element) {
+            delete arrow;
+            arrows_.erase(arrows_.begin() + i);
+        }
+    }
 }

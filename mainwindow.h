@@ -52,12 +52,16 @@ private slots:
 
     void testSelection();
 
+    void addArrow(bool bidirectional);
+    void setArrowMode(bool enabled);
+
 private:
     Ui::MainWindow *ui;
     ShapeContainer shapes_;
     ObjectTreeWidget* treeWidget_;
     QSplitter* splitter_;
     ShapeType currentShapeType_ = CIRCLE;
+    bool arrowMode_;
 
     void createMenu();
     void createToolBar();

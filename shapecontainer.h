@@ -5,11 +5,17 @@
 #include "composite.h"
 #include "observer.h"
 
+// Предварительное объявление класса Arrow
+class Arrow;
+
 class ShapeContainer : public Observable
 {
 private:
     std::vector<CompositeElement*> elements_;
-    bool ignoreSelectionNotifications_;
+    std::vector<Arrow*> arrows_;
+    CompositeElement* arrowSource_;
+
+    void removeArrowsWithElement(CompositeElement* element);  // Добавить эту строку
 
 public:
     ShapeContainer();
@@ -22,7 +28,7 @@ public:
     void clearSelection();
     void removeSelected();
     void selectAll();
-    void notifySelectionChanged();  // ДОЛЖЕН БЫТЬ ТОЛЬКО ОДИН РАЗ!
+    void notifySelectionChanged();
 
     CompositeElement* getElement(int i) const;
     int getCount() const;
@@ -43,8 +49,18 @@ public:
     void loadFromString(const std::string& data);
     bool loadFromFile(const std::string& filename);
 
-    void setIgnoreSelectionNotifications(bool ignore);
-    bool isIgnoringSelectionNotifications() const;
+    // Методы для работы со стрелками
+    void addArrow(CompositeElement* source, CompositeElement* target, bool bidirectional = false);
+    void removeArrow(Arrow* arrow);
+    void removeSelectedArrows();
+    std::vector<Arrow*> getArrows() const { return arrows_; }
+    void drawArrows(QPainter& painter) const;
+
+    void setArrowSource(CompositeElement* source) { arrowSource_ = source; }
+    CompositeElement* getArrowSource() const { return arrowSource_; }
+    void clearArrowSource() { arrowSource_ = nullptr; }
+
+    CompositeElement* findElementAt(int x, int y, bool includeArrows = true);
 
 private:
     void collectAllElements(CompositeElement* element, std::vector<CompositeElement*>& result) const;
