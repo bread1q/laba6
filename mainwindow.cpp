@@ -32,9 +32,30 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle("Визуальный редактор - Круг (1)");
     resize(800, 600);
     setFocusPolicy(Qt::StrongFocus);
+
+    // Создаем сплиттер для разделения окна на две части
+    splitter_ = new QSplitter(this);
+    setCentralWidget(splitter_);
+
+    // Создаем виджет дерева
+    treeWidget_ = new ObjectTreeWidget(splitter_);
+
+    // Создаем рабочую область (будет занимать правую часть)
+    QWidget* workArea = new QWidget(splitter_);
+    workArea->setMinimumWidth(400);
+
+    splitter_->addWidget(treeWidget_);
+    splitter_->addWidget(workArea);
+
+    // Устанавливаем начальные размеры (200px для дерева, остальное для работы)
+    splitter_->setSizes(QList<int>() << 200 << 600);
+
     createMenu();
     createToolBar();
     updateWindowTitle();
+
+    // Первоначальное обновление дерева
+    treeWidget_->updateTree(&shapes_);
 }
 
 void MainWindow::createMenu() {
@@ -246,6 +267,7 @@ void MainWindow::clearWindow() {
         shapes_.clear();
         update();
     }
+    treeWidget_->updateTree(&shapes_);
 }
 
 void MainWindow::increaseSize() {
@@ -492,6 +514,7 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
         update();
     }
 
+    treeWidget_->updateTree(&shapes_);
     QMainWindow::mousePressEvent(event);
 }
 
@@ -600,6 +623,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
         update();
     }
 
+    treeWidget_->updateTree(&shapes_);
     QMainWindow::keyPressEvent(event);
 }
 

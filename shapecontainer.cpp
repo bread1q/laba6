@@ -119,6 +119,8 @@ void ShapeContainer::groupSelected() {
     // Добавляем новую группу в контейнер
     elements_.push_back(newGroup);
     newGroup->setSelected(true);
+
+    treeWidget_->updateTree(&shapes_);
 }
 
 void ShapeContainer::ungroupSelected() {
@@ -152,6 +154,7 @@ void ShapeContainer::ungroupSelected() {
             }
         }
     }
+    treeWidget_->updateTree(&shapes_);
 }
 
 void ShapeContainer::moveSelected(int dx, int dy, int maxX, int maxY, int topMargin) {

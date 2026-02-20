@@ -3,6 +3,8 @@
 
 #include <QMainWindow>
 #include "shapecontainer.h"
+#include "objecttreewidget.h"
+#include <QSplitter>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -65,6 +67,9 @@ private:
     void collectNonGroupElementsFromGroup(CompositeElement* element, std::vector<CompositeElement*>& result);
     void resizeGroupElements(CompositeElement* group, int delta, int maxX, int maxY, int topMargin);
     bool canResizeElement(CompositeElement* element, int delta, int maxX, int maxY, int topMargin);
+
+    ObjectTreeWidget* treeWidget_;
+    QSplitter* splitter_;
 };
 
 #endif // MAINWINDOW_H
